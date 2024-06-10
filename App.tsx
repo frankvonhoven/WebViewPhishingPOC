@@ -16,6 +16,8 @@ import {
   useColorScheme,
   View,
 } from 'react-native';
+import URL from 'url-parse';
+import {Mutex} from 'async-mutex';
 
 import {
   Colors,
@@ -24,42 +26,44 @@ import {
   LearnMoreLinks,
   ReloadInstructions,
 } from 'react-native/Libraries/NewAppScreen';
-
-type SectionProps = PropsWithChildren<{
-  title: string;
-}>;
-
-function Section({children, title}: SectionProps): React.JSX.Element {
-  const isDarkMode = useColorScheme() === 'dark';
-  return (
-    <View style={styles.sectionContainer}>
-      <Text
-        style={[
-          styles.sectionTitle,
-          {
-            color: isDarkMode ? Colors.white : Colors.black,
-          },
-        ]}>
-        {title}
-      </Text>
-      <Text
-        style={[
-          styles.sectionDescription,
-          {
-            color: isDarkMode ? Colors.light : Colors.dark,
-          },
-        ]}>
-        {children}
-      </Text>
-    </View>
-  );
-}
+import {WebView} from 'react-native-webview';
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
-
+  const webRef = React.useRef(null);
+  const [isGood, setIsGood] = React.useState(false);
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+    flex: 1,
+  };
+  const mutex = new Mutex();
+
+  // React.useEffect(() => {
+  //   console.log('webRef', webRef.current);
+  // }, []);
+  const good = isGood;
+  const URI = good ? 'https://google.com' : 'https://nwx267.csb.app/';
+
+  const handleMutex = async () => {
+    const release = await mutex.acquire();
+    console.log('MUTEX');
+    release();
+  };
+
+  const handlePhishing = () => {
+    webRef.current.stopLoading();
+    webRef.current.clearCache(true);
+    webRef.current.source = {uri: 'https://google.com'};
+    handleMutex();
+  };
+
+  const onShouldStartLoadWithRequest = (request: any) => {
+    const legitRequest = request.url.includes(URI.slice(8));
+    console.log('IS LEGIT REQUEST', legitRequest, request.url, URI.slice(8));
+    if (!legitRequest) {
+      handlePhishing();
+    }
+    return legitRequest;
   };
 
   return (
@@ -68,51 +72,49 @@ function App(): React.JSX.Element {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         backgroundColor={backgroundStyle.backgroundColor}
       />
-      <ScrollView
-        contentInsetAdjustmentBehavior="automatic"
-        style={backgroundStyle}>
-        <Header />
-        <View
-          style={{
-            backgroundColor: isDarkMode ? Colors.black : Colors.white,
-          }}>
-          <Section title="Step One">
-            Edit <Text style={styles.highlight}>App.tsx</Text> to change this
-            screen and then come back to see your edits.
-          </Section>
-          <Section title="See Your Changes">
-            <ReloadInstructions />
-          </Section>
-          <Section title="Debug">
-            <DebugInstructions />
-          </Section>
-          <Section title="Learn More">
-            Read the docs to discover what to do next:
-          </Section>
-          <LearnMoreLinks />
-        </View>
-      </ScrollView>
+      <View style={{flexDirection: 'row', justifyContent: 'space-around'}}>
+        <Text
+          onPress={() => webRef.current.reload()}
+          style={{color: 'white', left: 20}}>
+          RELOAD
+        </Text>
+        <Text
+          onPress={() => setIsGood(!good)}
+          style={{color: 'white', marginLeft: 20}}>
+          {good ? 'GO BAD' : 'GO GOOD'}
+        </Text>
+      </View>
+      <Text
+        onPress={() => webRef.current.reload()}
+        style={{color: 'white', left: 20}}>
+        {URI}
+      </Text>
+      <WebView
+        ref={webRef}
+        onLoad={syntheticEvent => {
+          const {nativeEvent} = syntheticEvent;
+          const newUrl = new URL(nativeEvent.url);
+          console.log('ON LOAD NEW URL', newUrl);
+        }}
+        onLoadEnd={syntheticEvent => {
+          console.log('-------- ON LOAD END');
+        }}
+        onLoadStart={syntheticEvent => {
+          const {nativeEvent} = syntheticEvent;
+          const newUrl = new URL(nativeEvent.url);
+          console.log('ON LOAD START NEW URL', newUrl);
+        }}
+        onLoadProgress={({nativeEvent}) => {
+          // Keep track of going back navigation within component
+          console.log('XXXXXXXXXXXX NAV STATE', nativeEvent.url);
+          // this.canGoBack = navState.canGoBack;
+        }}
+        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
+        source={{uri: URI}}
+        style={{marginTop: 20, flex: 1}}
+      />
     </SafeAreaView>
   );
 }
-
-const styles = StyleSheet.create({
-  sectionContainer: {
-    marginTop: 32,
-    paddingHorizontal: 24,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: '600',
-  },
-  sectionDescription: {
-    marginTop: 8,
-    fontSize: 18,
-    fontWeight: '400',
-  },
-  highlight: {
-    fontWeight: '700',
-  },
-});
 
 export default App;
