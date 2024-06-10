@@ -31,7 +31,9 @@ import {WebView} from 'react-native-webview';
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
   const webRef = React.useRef(null);
-  const [isGood, setIsGood] = React.useState(false);
+  const [isGood, setIsGood] = React.useState(true);
+  const [loadFinished, setLoadFinished] = React.useState(true);
+  const [loadedHostname, setLoadedHostname] = React.useState('');
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
     flex: 1,
@@ -44,26 +46,19 @@ function App(): React.JSX.Element {
   const good = isGood;
   const URI = good ? 'https://google.com' : 'https://nwx267.csb.app/';
 
-  const handleMutex = async () => {
-    const release = await mutex.acquire();
-    console.log('MUTEX');
-    release();
-  };
-
-  const handlePhishing = () => {
-    webRef.current.stopLoading();
-    webRef.current.clearCache(true);
-    webRef.current.source = {uri: 'https://google.com'};
-    handleMutex();
-  };
-
   const onShouldStartLoadWithRequest = (request: any) => {
-    const legitRequest = request.url.includes(URI.slice(8));
-    console.log('IS LEGIT REQUEST', legitRequest, request.url, URI.slice(8));
-    if (!legitRequest) {
-      handlePhishing();
+    const {hostname} = new URL(request.url);
+    console.log(
+      'ON SHOULD START LOAD WITH REQUEST',
+      loadedHostname === hostname,
+    );
+    console.log('HOSTNAME', hostname, loadedHostname);
+    if (!loadFinished && loadedHostname === hostname) {
+      console.log('LOADED HOSTNAME', loadedHostname, hostname);
+      return false;
     }
-    return legitRequest;
+    setLoadFinished(false);
+    return true;
   };
 
   return (
@@ -79,7 +74,7 @@ function App(): React.JSX.Element {
           RELOAD
         </Text>
         <Text
-          onPress={() => setIsGood(!good)}
+          onPress={() => setIsGood(state => !state)}
           style={{color: 'white', marginLeft: 20}}>
           {good ? 'GO BAD' : 'GO GOOD'}
         </Text>
@@ -90,26 +85,30 @@ function App(): React.JSX.Element {
         {URI}
       </Text>
       <WebView
+        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         ref={webRef}
         onLoad={syntheticEvent => {
           const {nativeEvent} = syntheticEvent;
           const newUrl = new URL(nativeEvent.url);
-          console.log('ON LOAD NEW URL', newUrl);
+          console.log('----------- ON LOAD NEW URL', newUrl);
         }}
         onLoadEnd={syntheticEvent => {
           console.log('-------- ON LOAD END');
+          const {nativeEvent} = syntheticEvent;
+          const newUrl = new URL(nativeEvent.url);
+          const {hostname} = newUrl;
+          console.log('ON LOAD END HOSTNAME', hostname);
+          setLoadedHostname(hostname);
+          setLoadFinished(true);
         }}
         onLoadStart={syntheticEvent => {
           const {nativeEvent} = syntheticEvent;
           const newUrl = new URL(nativeEvent.url);
+          const {hostname} = newUrl;
+          console.log('ON LOAD START HOSTNAME', hostname);
+          setLoadedHostname(hostname);
           console.log('ON LOAD START NEW URL', newUrl);
         }}
-        onLoadProgress={({nativeEvent}) => {
-          // Keep track of going back navigation within component
-          console.log('XXXXXXXXXXXX NAV STATE', nativeEvent.url);
-          // this.canGoBack = navState.canGoBack;
-        }}
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
         source={{uri: URI}}
         style={{marginTop: 20, flex: 1}}
       />
