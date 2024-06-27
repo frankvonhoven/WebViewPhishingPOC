@@ -1,64 +1,67 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
-
 import React from 'react';
-import type {PropsWithChildren} from 'react';
 import {
+  Button,
   SafeAreaView,
-  ScrollView,
   StatusBar,
-  StyleSheet,
   Text,
+  TextInput,
   useColorScheme,
   View,
 } from 'react-native';
-import URL from 'url-parse';
-import {Mutex} from 'async-mutex';
 
-import {
-  Colors,
-  DebugInstructions,
-  Header,
-  LearnMoreLinks,
-  ReloadInstructions,
-} from 'react-native/Libraries/NewAppScreen';
-import {WebView} from 'react-native-webview';
+import {Colors} from 'react-native/Libraries/NewAppScreen';
+
+const originalSend = XMLHttpRequest.prototype.send;
+const originalOpen = XMLHttpRequest.prototype.open;
 
 function App(): React.JSX.Element {
   const isDarkMode = useColorScheme() === 'dark';
-  const webRef = React.useRef(null);
-  const [isGood, setIsGood] = React.useState(true);
-  const [loadFinished, setLoadFinished] = React.useState(true);
-  const [loadedHostname, setLoadedHostname] = React.useState('');
+  const [sendURL, setSendURL] = React.useState('');
+  const [openURL, setOpenURL] = React.useState('');
+  const [openMethod, setOpenMethod] = React.useState('');
+  const [response, setResponse] = React.useState([]);
+  const [URL, setURL] = React.useState('swapi.dev/api/people/1');
   const backgroundStyle = {
     backgroundColor: isDarkMode ? Colors.darker : Colors.lighter,
+    alignItems: 'center',
+    justifyContent: 'center',
     flex: 1,
   };
-  const mutex = new Mutex();
 
-  // React.useEffect(() => {
-  //   console.log('webRef', webRef.current);
-  // }, []);
-  const good = isGood;
-  const URI = good ? 'https://google.com' : 'https://nwx267.csb.app/';
+  let currentUrl = '';
 
-  const onShouldStartLoadWithRequest = (request: any) => {
-    const {hostname} = new URL(request.url);
-    console.log(
-      'ON SHOULD START LOAD WITH REQUEST',
-      loadedHostname === hostname,
-    );
-    console.log('HOSTNAME', hostname, loadedHostname);
-    if (!loadFinished && loadedHostname === hostname) {
-      console.log('LOADED HOSTNAME', loadedHostname, hostname);
-      return false;
-    }
-    setLoadFinished(false);
-    return true;
+  XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+    currentUrl = url.toString();
+    setOpenURL(currentUrl);
+    setOpenMethod(method);
+    return originalOpen.apply(this, [method, url, ...rest]);
+  };
+
+  XMLHttpRequest.prototype.send = function (body) {
+    // This is the interceptor logic to prevent the request from being sent
+    // if (currentUrl.includes('swapi.dev')) {
+    //   return;
+    // }
+
+    // Otherwise, we can proceed with the request
+    setSendURL(currentUrl);
+    return originalSend.call(this, body);
+  };
+
+  const makeFetchCall = async () => {
+    const res = await fetch(`https://${URL}`, {
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+      },
+    }).catch(error => {
+      console.error('ERROR', error);
+    });
+    const data = await res?.json();
+    console.log('DATA', data);
+    setResponse(data);
+    // setURL('');
   };
 
   return (
@@ -67,53 +70,56 @@ function App(): React.JSX.Element {
         barStyle={isDarkMode ? 'light-content' : 'dark-content'}
         backgroundColor={backgroundStyle.backgroundColor}
       />
-      <View style={{flexDirection: 'row', justifyContent: 'space-around'}}>
-        <Text
-          onPress={() => webRef.current.reload()}
-          style={{color: 'white', left: 20}}>
-          RELOAD
+      <Text style={styles.header}>Fetch API POC</Text>
+      <View style={styles.detailsWrapper}>
+        <Text style={styles.key}>
+          Open URL: <Text style={styles.value}>{openURL}</Text>
         </Text>
-        <Text
-          onPress={() => setIsGood(state => !state)}
-          style={{color: 'white', marginLeft: 20}}>
-          {good ? 'GO BAD' : 'GO GOOD'}
+        <Text style={styles.key}>
+          Open Method: <Text style={styles.value}>{openMethod}</Text>
         </Text>
+        <Text style={styles.key}>
+          Send URL: <Text style={styles.value}>{sendURL}</Text>
+        </Text>
+        <TextInput
+          style={styles.input}
+          onChangeText={setURL}
+          autoCapitalize="none"
+          value={URL}
+        />
+        <Button title="MAKE FETCH CALL" onPress={makeFetchCall} />
+        {Object.keys(response).map((key, index) => (
+          <Text key={index} style={styles.key}>
+            {[key]}: <Text style={styles.value}>{response[key]}</Text>
+          </Text>
+        ))}
       </View>
-      <Text
-        onPress={() => webRef.current.reload()}
-        style={{color: 'white', left: 20}}>
-        {URI}
-      </Text>
-      <WebView
-        onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
-        ref={webRef}
-        onLoad={syntheticEvent => {
-          const {nativeEvent} = syntheticEvent;
-          const newUrl = new URL(nativeEvent.url);
-          console.log('----------- ON LOAD NEW URL', newUrl);
-        }}
-        onLoadEnd={syntheticEvent => {
-          console.log('-------- ON LOAD END');
-          const {nativeEvent} = syntheticEvent;
-          const newUrl = new URL(nativeEvent.url);
-          const {hostname} = newUrl;
-          console.log('ON LOAD END HOSTNAME', hostname);
-          setLoadedHostname(hostname);
-          setLoadFinished(true);
-        }}
-        onLoadStart={syntheticEvent => {
-          const {nativeEvent} = syntheticEvent;
-          const newUrl = new URL(nativeEvent.url);
-          const {hostname} = newUrl;
-          console.log('ON LOAD START HOSTNAME', hostname);
-          setLoadedHostname(hostname);
-          console.log('ON LOAD START NEW URL', newUrl);
-        }}
-        source={{uri: URI}}
-        style={{marginTop: 20, flex: 1}}
-      />
     </SafeAreaView>
   );
 }
+
+const styles = {
+  header: {
+    color: 'white',
+    top: 60,
+    left: 10,
+    fontSize: 20,
+    position: 'absolute',
+  },
+  detailsWrapper: {
+    justifyContent: 'center',
+  },
+  key: {color: 'white', fontSize: 16},
+  value: {color: 'white', fontSize: 12},
+  input: {
+    color: 'white',
+    width: 200,
+    height: 40,
+    borderWidth: 1,
+    borderColor: 'white',
+    marginVertical: 20,
+    paddingHorizontal: 5,
+  },
+};
 
 export default App;
